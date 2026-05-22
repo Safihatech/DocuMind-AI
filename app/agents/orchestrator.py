@@ -77,6 +77,10 @@ class Orchestrator:
     def _retrieve(self, state: OrchestratorState) -> OrchestratorState:
         query = state.get("query", "")
         logger.info("Searching ChromaDB for query: %s", query)
+        try:
+            print("Collection count:", self.vector_store.count())
+        except Exception as exc:
+            print("Collection count error:", exc)
         top_k = state.get("top_k", 5)
         use_hybrid = state.get("use_hybrid", True)
         use_web = state.get("analysis", {}).get("use_web_search", False)
@@ -90,6 +94,7 @@ class Orchestrator:
             user_id=user_id,
             document_id=document_id,
         )
+        print("Query results:", retrieval_results.get("documents"))
         return {
             "documents": retrieval_results.get("documents", []),
             "web_results": retrieval_results.get("web_results", []),
@@ -108,7 +113,11 @@ class Orchestrator:
         logger.info("Sending query to generator: %s", query)
         memory_context = None
         user_id = state.get("user_id")
-        model = state.get("model", "meta-llama-8b")
+        # prefer explicit model in state; if None, use configured `groq_model`
+        model = state.get("model") or (self.settings.groq_model if self.settings else None)
+        if model in ('meta-llama-8b', 'mixtral-8x7b-32768') and self.settings and self.settings.groq_model and self.settings.groq_model not in ('meta-llama-8b', 'mixtral-8x7b-32768'):
+            logger.warning("Overriding unsupported explicit model %s with configured GROQ_MODEL=%s", model, self.settings.groq_model)
+            model = self.settings.groq_model
         if self.db is not None:
             try:
                 memory_context = self.db.get_recent_conversation(limit=5)
@@ -141,7 +150,7 @@ class Orchestrator:
             self.memory.add(user=query, bot=answer)
         return {}
 
-    def handle_query(self, query: str, top_k: int = 5, use_hybrid: bool = True, user_id: int | None = None, document_id: int | None = None, model: str = 'meta-llama-8b') -> Dict:
+    def handle_query(self, query: str, top_k: int = 5, use_hybrid: bool = True, user_id: int | None = None, document_id: int | None = None, model: str | None = None) -> Dict:
         """Handle a user query through the full RAG pipeline."""
         try:
             inputs: OrchestratorState = {

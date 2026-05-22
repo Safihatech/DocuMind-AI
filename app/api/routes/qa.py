@@ -21,9 +21,13 @@ def get_optional_user_id(request: Request):
 async def query_qa(payload: QARequest, request: Request):
     """Accept a user query and return an answer via the orchestrator."""
     user_id = get_optional_user_id(request)
-    print(f"[qa] Query received: {payload.query} user_id={user_id} document_id={payload.document_id}")
+    print(f"[qa] Query received: {payload.query} model={payload.model} user_id={user_id} document_id={payload.document_id}")
     vector_store = request.app.state.vector_store
     print(f"[qa] Using vector_store id={id(vector_store)} collection={getattr(vector_store, 'collection_name', None)} api_url={getattr(vector_store, 'api_url', None)}")
+    try:
+        print("Collection count:", vector_store.count())
+    except Exception as exc:
+        print("Collection count error:", exc)
     logger.info("Question received: %s", payload.query)
     orchestrator = request.app.state.orchestrator
     result = orchestrator.handle_query(

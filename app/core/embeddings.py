@@ -71,32 +71,46 @@ def embed_texts(texts: list):
     texts = [str(t) for t in texts if t is not None]
     if not texts:
         return []
+    # Try to use Gemini with a small retry/backoff loop for transient errors (e.g., 429).
+    client = get_gemini_client()
+    if client is not None:
+        import time
 
-    try:
-        client = get_gemini_client()
-        if client is not None:
-            if _gemini_client_is_new and hasattr(client, "models"):
-                response = client.models.embed_content(
-                    model="gemini-embedding-001",
-                    contents=texts,
-                )
-                embeddings = getattr(response, "embeddings", None)
-                if embeddings is not None:
-                    return [
-                        getattr(item, "values", item.get("values") if isinstance(item, dict) else None)
-                        for item in embeddings
-                    ]
-            else:
-                result = client.embed_content(texts)
-                if isinstance(result, dict) and "embeddings" in result:
-                    return [e["values"] for e in result["embeddings"]]
-                if isinstance(result, list) and all(isinstance(e, dict) and "values" in e for e in result):
-                    return [e["values"] for e in result]
-                if isinstance(result, dict) and "values" in result:
-                    return [result["values"]]
-                return result
-    except Exception as e:
-        logging.warning(f"Error using Gemini embedding model: {e}")
+        attempts = 3
+        backoff = 1.0
+        for attempt in range(1, attempts + 1):
+            try:
+                if _gemini_client_is_new and hasattr(client, "models"):
+                    response = client.models.embed_content(
+                        model="gemini-embedding-001",
+                        contents=texts,
+                    )
+                    embeddings = getattr(response, "embeddings", None)
+                    if embeddings is not None:
+                        return [
+                            getattr(item, "values", item.get("values") if isinstance(item, dict) else None)
+                            for item in embeddings
+                        ]
+                else:
+                    result = client.embed_content(texts)
+                    if isinstance(result, dict) and "embeddings" in result:
+                        return [e["values"] for e in result["embeddings"]]
+                    if isinstance(result, list) and all(isinstance(e, dict) and "values" in e for e in result):
+                        return [e["values"] for e in result]
+                    if isinstance(result, dict) and "values" in result:
+                        return [result["values"]]
+                    return result
+            except Exception as e:
+                logging.warning("Error using Gemini embedding model (attempt %d/%d): %s", attempt, attempts, e)
+                # If this was the last attempt, break and fall back.
+                if attempt >= attempts:
+                    break
+                # Exponential backoff before retrying
+                try:
+                    time.sleep(backoff)
+                except Exception:
+                    pass
+                backoff *= 2
 
     logging.warning("Falling back to deterministic embedding fallback")
     return _fallback_encode(texts)

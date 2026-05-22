@@ -23,6 +23,21 @@ class CitationAgent:
             if metadata.get("page"):
                 page_info = f" (Page {metadata['page']})"
             source = metadata.get("source") or metadata.get("title") or f"doc-{idx}"
+            tags = metadata.get("tags", [])
+            if isinstance(tags, str):
+                try:
+                    import json
+                    parsed_tags = json.loads(tags)
+                    if isinstance(parsed_tags, list):
+                        tags = parsed_tags
+                    else:
+                        tags = [str(parsed_tags)]
+                except Exception:
+                    tags = [tags]
+            if tags is None:
+                tags = []
+            elif not isinstance(tags, list):
+                tags = [tags]
             formatted.append(
                 {
                     "id": doc.get("id"),
@@ -30,7 +45,7 @@ class CitationAgent:
                     "title": metadata.get("title"),
                     "page": metadata.get("page"),
                     "uploaded_at": metadata.get("uploaded_at"),
-                    "tags": metadata.get("tags", []),
+                    "tags": tags,
                     "snippet": doc.get("text", "")[:300],
                 }
             )

@@ -219,6 +219,10 @@ class VectorStore:
 
         return self._local_vector_query(embedding, top_k=top_k, user_id=user_id, document_id=document_id)
 
+    def count(self) -> int:
+        """Return the number of documents currently stored in the local index."""
+        return len(self._local_index)
+
     def _local_vector_query(self, embedding, top_k: int = 5, user_id: int | None = None, document_id: int | None = None):
         try:
             embedding = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)

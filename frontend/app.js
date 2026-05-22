@@ -16,6 +16,9 @@ const documentCount = document.getElementById('document-count');
 const activeDocumentName = document.getElementById('active-document-name');
 const toastContainer = document.getElementById('toast-container');
 const modelSelect = document.getElementById('model-select');
+if (modelSelect) {
+  modelSelect.value = 'mistral-saba-24b';
+}
 const sectionToggles = document.querySelectorAll('.section-toggle');
 
 let documents = [];

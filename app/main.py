@@ -113,6 +113,7 @@ async def _upload_document(request: Request, file: UploadFile | None = File(None
 		if save_path.exists():
 			save_path = user_dir / f"{uuid.uuid4().hex}_{filename}"
 		with save_path.open("wb") as out_file:
+			# Read the full file content (no size limit here) and persist to disk.
 			content_bytes = await upload.read()
 			out_file.write(content_bytes)
 		print("2 file saved to disk")
@@ -130,7 +131,7 @@ async def _upload_document(request: Request, file: UploadFile | None = File(None
 		upload_time = datetime.utcnow().isoformat() + "Z"
 		for idx, chunk in enumerate(chunks, start=1):
 			docs.append({
-				"id": f"{upload.filename}-{idx}",
+				"id": f"{uuid.uuid4().hex}-{idx}",
 				"text": chunk,
 				"metadata": {
 					"title": upload.filename,
@@ -159,6 +160,7 @@ async def _upload_document(request: Request, file: UploadFile | None = File(None
 
 		print("6 storing in chromadb")
 		try:
+			# Add documents (with embeddings) to the vector store synchronously
 			concurrent.futures.ThreadPoolExecutor(max_workers=1).submit(vector_store.add_documents, docs).result(timeout=30)
 		except concurrent.futures.TimeoutError as exc:
 			logger.exception("ChromaDB storage timed out for %s: %s", upload.filename, exc)
@@ -169,28 +171,17 @@ async def _upload_document(request: Request, file: UploadFile | None = File(None
 			continue
 
 		print("7 upload complete")
-		# Create a DB record for this upload so frontend can poll status
+		# Create a DB record for this upload so frontend can poll status.
 		doc_id = None
 		try:
-			doc_id = request.app.state.db.create_document(filename, str(save_path), user_id=None, status="queued")
+			doc_id = request.app.state.db.create_document(filename, str(save_path), user_id=None, status="indexed")
+			request.app.state.db.update_document_status(doc_id, "indexed", chunks=len(chunks))
 		except Exception:
 			doc_id = None
 		try:
-			request.app.state.indexing_status[doc_id] = {"status": "queued", "message": None, "chunks": 0}
+			request.app.state.indexing_status[doc_id] = {"status": "indexed", "message": None, "chunks": len(chunks)}
 		except Exception:
 			pass
-		# If background tasks are available, schedule the existing processor
-		try:
-			from app.api.routes.documents import _process_and_index
-			if background_tasks is not None and doc_id is not None:
-				background_tasks.add_task(_process_and_index, request.app, str(save_path), doc_id, None)
-				print(f"[upload] Background processing scheduled for document_id={doc_id}")
-			else:
-				# Process synchronously
-				if doc_id is not None:
-					_process_and_index(request.app, str(save_path), doc_id, None)
-		except Exception as exc:
-			print(f"[upload] Scheduling local processing failed: {exc}")
 		results.append({"status": "success", "filename": filename, "document_id": doc_id, "chunks": len(chunks)})
 
 	return {"status": "success", "message": "Document uploaded successfully", "files": results}
@@ -218,11 +209,16 @@ async def _query_qa(payload: QARequest, request: Request):
 		"Be specific. Do not summarize unless asked. Do not use your own knowledge."
 	)
 
+	# Attempt LLM generation via Groq; use configured model with payload override.
 	try:
 		from groq import Groq
+		model_name = payload.model or request.app.state.settings.groq_model or "mistral-saba-24b"
+		if model_name in ('meta-llama-8b', 'mixtral-8x7b-32768') and request.app.state.settings.groq_model and request.app.state.settings.groq_model not in ('meta-llama-8b', 'mixtral-8x7b-32768'):
+			logger.warning("Overriding unsupported model %s with configured GROQ_MODEL=%s", model_name, request.app.state.settings.groq_model)
+			model_name = request.app.state.settings.groq_model
 		client = Groq(api_key=request.app.state.settings.groq_api_key)
 		response = client.chat.completions.create(
-			model=payload.model or "meta-llama-8b",
+			model=model_name,
 			messages=[
 				{"role": "system", "content": system_prompt},
 				{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"},
@@ -231,9 +227,45 @@ async def _query_qa(payload: QARequest, request: Request):
 			temperature=0.2,
 		)
 		answer = response.choices[0].message.content.strip()
+		# If the model returned an empty answer, treat it like a failure and fallback.
+		if not answer:
+			raise ValueError("Empty answer from Groq model")
 	except Exception as exc:
 		logger.exception("Groq generation failed: %s", exc)
-		answer = ""
+		error_text = str(exc).lower()
+		if 'decommissioned' in error_text and model_name != 'llama-3.3-70b-versatile':
+			logger.warning("Retrying Groq with fallback model llama-3.3-70b-versatile")
+			try:
+				client = Groq(api_key=request.app.state.settings.groq_api_key)
+				response = client.chat.completions.create(
+					model='llama-3.3-70b-versatile',
+					messages=[
+						{"role": "system", "content": system_prompt},
+						{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"},
+					],
+					max_tokens=1024,
+					temperature=0.2,
+				)
+				answer = response.choices[0].message.content.strip()
+				if answer:
+					return QAResponse(
+						answer=answer,
+						citations=[],
+						sources=[],
+						follow_up=None,
+						web_search=[],
+					)
+			except Exception as exc2:
+				logger.exception("Groq fallback generation failed: %s", exc2)
+		# Provide a helpful fallback: return retrieved context if available, plus an error note.
+		if context:
+			snippet = context[:4000] if len(context) > 4000 else context
+			answer = (
+				"[Generation failed: " + str(exc) + "]\n\n" +
+				"Retrieved context (used for answer):\n" + snippet
+			)
+		else:
+			answer = f"Generation failed: {exc}. Check GROQ_API_KEY and model access."
 
 	return QAResponse(
 		answer=answer,
@@ -257,16 +289,8 @@ def create_app() -> FastAPI:
 	app.include_router(search_router.router)
 	app.include_router(user_router.router)
 
-	# Override existing upload/chat endpoints with main.py handlers.
-	app.router.routes = [
-		route for route in app.router.routes
-		if not (
-			getattr(route, 'path', None) == '/documents/upload' and 'POST' in getattr(route, 'methods', {})
-			or getattr(route, 'path', None) == '/qa/query' and 'POST' in getattr(route, 'methods', {})
-		)
-	]
-	app.add_api_route('/documents/upload', _upload_document, methods=['POST'])
-	app.add_api_route('/qa/query', _query_qa, methods=['POST'])
+	# Use the router-defined document upload and QA endpoints from app/api/routes.
+	# This ensures uploads are processed with DocumentProcessor and QA uses Orchestrator.
 
 	# Define the health check endpoint
 	@app.get("/health")

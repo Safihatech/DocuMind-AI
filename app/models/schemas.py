@@ -10,14 +10,14 @@ class DocumentMeta(BaseModel):
     page: Optional[int] = None
     snippet: Optional[str] = None
     uploaded_at: Optional[str] = None
-    tags: Optional[List[str]] = []
+    tags: Optional[List[str]] = None
 
 
 class QARequest(BaseModel):
     query: str
     top_k: int = 5
     use_hybrid: bool = True
-    model: str = 'meta-llama-8b'
+    model: Optional[str] = None
     document_id: Optional[int] = None
 
 

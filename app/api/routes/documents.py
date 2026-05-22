@@ -55,6 +55,15 @@ def _process_and_index(app, save_path: str, document_id: int, user_id: int | Non
 
     processor = DocumentProcessor()
     try:
+        # If the document is already indexed, skip re-processing to avoid duplicates.
+        try:
+            existing = app.state.db.get_document(document_id)
+            if existing and existing.get("status") == "indexed":
+                print(f"[upload] Document {document_id} already indexed; skipping reindex")
+                return
+        except Exception:
+            pass
+
         print("[upload] 1 file received")
         print("[upload] 2 reading file content")
         print("[upload] 3 extracting text")
@@ -110,6 +119,10 @@ def _process_and_index(app, save_path: str, document_id: int, user_id: int | Non
             doc["embedding"] = emb.tolist() if hasattr(emb, "tolist") else emb
 
         app.state.vector_store.add_documents(docs)
+        try:
+            print("Collection count after upload:", app.state.vector_store.count())
+        except Exception as exc:
+            print("Collection count after upload error:", exc)
         app.state.db.update_document_status(document_id, "indexed", chunks=len(docs))
         try:
             app.state.indexing_status[document_id] = {"status": "indexed", "message": None, "chunks": len(docs)}
