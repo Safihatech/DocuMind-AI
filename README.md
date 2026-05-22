@@ -52,6 +52,19 @@ Or manually with Hypercorn:
 
 The app will be available at: `http://127.0.0.1:8000`
 
+### Alternative: Run with PowerShell + Uvicorn
+
+If you prefer to run the app manually in PowerShell using `uvicorn`, run these commands from your project folder:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& .venv\Scripts\Activate.ps1
+cd <your-project-directory>
+uvicorn app.main:app --reload
+```
+
+Replace `<your-project-directory>` with your project folder if not already there.
+
 ### Run with Docker (recommended for reproducible local setup)
 
 Build and start the API, MCP wrappers, Redis, and Celery worker using Docker Compose:
