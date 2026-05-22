@@ -1,0 +1,90 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuMind AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="brand-block">
+            <div class="brand-icon">DM</div>
+            <div>
+              <p class="label">DocuMind AI</p>
+              <p class="subtitle">Document Q&amp;A</p>
+            </div>
+          </div>
+          <div class="sidebar-actions">
+            <button id="new-chat-btn" type="button" class="button secondary-button">+ New Chat</button>
+            <button id="upload-sidebar-button" type="button" class="button primary-button">Upload Document</button>
+          </div>
+        </div>
+
+        <div class="sidebar-content">
+          <div class="sidebar-section">
+            <h2 class="section-title">Documents <span id="document-count" class="section-count">0</span></h2>
+            <div id="documents-list" class="documents-list"></div>
+          </div>
+          <div class="sidebar-section">
+            <h2 class="section-title">Chat History</h2>
+            <div id="history-list" class="history-list"></div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <label for="model-select">Model</label>
+          <select id="model-select">
+            <option value="llama3-8b-8192">llama3-8b-8192</option>
+            <option value="llama3-70b-8192">llama3-70b-8192</option>
+            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+          </select>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <div class="main-content">
+          <div id="welcome-screen" class="welcome-screen">
+            <div class="welcome-icon">☁️</div>
+            <div class="welcome-copy">
+              <h1>Welcome to DocuMind AI</h1>
+              <p>Upload a document to get started</p>
+            </div>
+            <div id="upload-dropbox" class="upload-dropbox" tabindex="0">
+              <div class="upload-dropbox-icon">⬆️</div>
+              <strong>Drag and drop your file here</strong>
+              <span>or click to browse</span>
+              <small>Supports PDF, TXT, MD files</small>
+            </div>
+            <button id="upload-button" type="button" class="button primary-button upload-button">Upload a document</button>
+            <div id="upload-status" class="upload-status hidden"></div>
+          </div>
+
+          <div id="chat-panel" class="chat-panel hidden">
+            <div class="chat-header">
+              <div>
+                <p class="chat-title">Chat with your document</p>
+                <p id="active-document-name" class="active-document-name"></p>
+              </div>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+          </div>
+        </div>
+
+        <form id="chat-form" class="chat-form" action="#">
+          <textarea id="chat-input" rows="1" placeholder="Upload a document to start chatting..." disabled></textarea>
+          <button id="send-button" type="submit" class="button send-button" disabled>Send</button>
+        </form>
+      </main>
+    </div>
+
+    <input id="upload-input" type="file" hidden accept=".txt,.pdf,.md">
+    <div id="toast-container" class="toast-container"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

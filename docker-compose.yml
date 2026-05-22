@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: rag_api
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_API_URL=${CHROMA_API_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - USE_SQLITE_MEMORY=${USE_SQLITE_MEMORY:-false}
+      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/app/memory.db}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ./:/app
+    depends_on:
+      - chroma
+      - websearch
+      - docproc
+      - redis
+
+  chroma:
+    build: .
+    container_name: rag_chroma_mcp
+    command: uvicorn app.mcp_servers.chroma_wrapper.server:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./:/app
+
+  websearch:
+    build: .
+    container_name: rag_websearch_mcp
+    command: uvicorn app.mcp_servers.web_search_tavily.server:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./:/app
+
+  docproc:
+    build: .
+    container_name: rag_docproc_mcp
+    command: uvicorn app.mcp_servers.document_processing.server:app --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./:/app
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    ports:
+      - "6379:6379"
+
+  celery_worker:
+    build: .
+    container_name: rag_celery_worker
+    command: celery -A app.celery_app.celery_app worker --loglevel=info
+    depends_on:
+      - api
+      - redis
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CHROMA_API_URL=http://chroma:8002
+    volumes:
+      - ./:/app
