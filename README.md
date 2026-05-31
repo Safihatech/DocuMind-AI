@@ -60,6 +60,7 @@ If you prefer to run the app manually in PowerShell using `uvicorn`, run these c
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 & .venv\Scripts\Activate.ps1
 cd <your-project-directory>
+.\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 ```
 
